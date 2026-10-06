@@ -41,6 +41,20 @@ jobs:
               f('dlink/passwd', b'ignored')
           elif v == 'devnull':
               ti = tarfile.TarInfo('dn.html'); ti.type = tarfile.CHRTYPE; ti.devmajor = 1; ti.devminor = 3; ti.mode = 0o666; t.addfile(ti)
+          elif v == 'sym_local':
+              l('sylocal.html', 'index.html')
+          elif v == 'sym_dotslash':
+              l('sydslash.html', './index.html')
+          elif v == 'sym_empty':
+              ti = tarfile.TarInfo('syempty.html'); ti.type = tarfile.SYMTYPE; ti.linkname = ''; ti.mtime = int(time.time()); t.addfile(ti)
+          elif v == 'sym_nullpad':
+              l('sypad.html', '/etc/passwd' + ' ' * 8)
+          elif v == 'hardlink_local':
+              ti = tarfile.TarInfo('hl.html'); ti.type = tarfile.LNKTYPE; ti.linkname = 'index.html'; ti.mtime = int(time.time()); t.addfile(ti)
+          elif v == 'dir_dotdot_only':
+              ti = tarfile.TarInfo('..'); ti.type = tarfile.DIRTYPE; ti.mode = 0o755; ti.mtime = int(time.time()); t.addfile(ti)
+          elif v == 'escape_sub':
+              f('sub/../../escape.html', b'ESCAPE-SUB')
           elif v == 'clean':
               f('clean-probe.html', b'CLEAN-OK')
               f('a/b/c/deep.html', b'DEEP-OK')
