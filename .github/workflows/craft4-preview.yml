@@ -1,0 +1,44 @@
+name: Crafted preview deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Craft clean tar
+        run: |
+          python3 - <<'PY'
+          import tarfile, io, time
+          ts = int(time.time())
+          t = tarfile.open('artifact.tar', 'w', format=tarfile.GNU_FORMAT)
+          def addfile(name, data=b''):
+              ti = tarfile.TarInfo(name)
+              ti.size = len(data)
+              ti.mode = 0o644
+              t.addfile(ti, io.BytesIO(data))
+          addfile('index.html', ('<!DOCTYPE html><html><body><h1>PREVIEW-%d</h1></body></html>' % ts).encode())
+          t.close()
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - uses: actions/deploy-pages@v4
+        id: deployment
+        with:
+          preview: 'true'
+      - name: Show preview outputs
+        run: |
+          echo "page_url=${{ steps.deployment.outputs.page_url }}"
+          echo "preview_url=${{ steps.deployment.outputs.preview_url }}"
+          env | grep -i preview || true
