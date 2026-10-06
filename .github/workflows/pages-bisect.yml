@@ -41,6 +41,16 @@ jobs:
               f('dlink/passwd', b'ignored')
           elif v == 'devnull':
               ti = tarfile.TarInfo('dn.html'); ti.type = tarfile.CHRTYPE; ti.devmajor = 1; ti.devminor = 3; ti.mode = 0o666; t.addfile(ti)
+          elif v == 'clean':
+              f('clean-probe.html', b'CLEAN-OK')
+              f('a/b/c/deep.html', b'DEEP-OK')
+          elif v == 'dotdot_inside':
+              f('a/../b.html', b'INTERNAL-DOTDOT')
+          elif v == 'dotslash':
+              f('./dslash.html', b'DOTSLASH-OK')
+          elif v == 'unicode':
+              f('%2e%2e/enc.html', b'ENCODED-DOTDOT-NAME')
+              f('sp ace.html', b'SPACE-OK')
           elif v == 'paxlink':
               ti = tarfile.TarInfo('px.html'); ti.type = tarfile.SYMTYPE; ti.linkname = '/etc/passwd'; ti.mtime = int(time.time())
               ti.pax_headers = {'linkpath': '/etc/passwd'}
