@@ -1,0 +1,30 @@
+name: preview-deploy-probe
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - name: build site
+        run: |
+          echo "<h1>PREVIEW-PROBE-$(date +%s)</h1><script>document.title='pv-'+location.host</script>" > index.html
+          mkdir -p pv
+          echo "<h1>PREVIEW-SUBDIR-PROBE</h1>" > pv/marker.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deploy
+        uses: actions/deploy-pages@v4
+        with:
+          preview: true
+      - run: |
+          echo "STATUS=${{ steps.deploy.outputs.deployment-status }}"
+          echo "PAGEURL=${{ steps.deploy.outputs.page-url }}"
+          echo "PREVIEWURL=${{ steps.deploy.outputs.preview-url }}"
+          echo "DEPLOYURL=${{ steps.deploy.outputs.deployment-url }}"
